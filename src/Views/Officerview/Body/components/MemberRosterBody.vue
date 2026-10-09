@@ -1,0 +1,396 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from "vue";
+import { supabase } from "@/lib/supabaseClient";
+import { Search, Pencil, Inbox } from "@primeicons/vue";
+
+type Member = {
+  member_id: number;
+  student_id: string;
+  full_name: string;
+  email: string;
+  role: string;
+  position?: string;
+  year?: string | number;
+  is_active: boolean;
+  joined_at?: string;
+};
+
+const orgName = ref("");
+const members = ref<Member[]>([]);
+const activeTab = ref<"active" | "archived">("active");
+const searchQuery = ref("");
+const isLoading = ref(true);
+
+// Pagination
+const currentPage = ref(1);
+const itemsPerPage = 8;
+
+// Edit Position Modal State
+const showEditModal = ref(false);
+const editingMember = ref<Member | null>(null);
+const newPosition = ref("");
+
+function getInitials(nameOrEmail?: string) {
+  if (!nameOrEmail) return "MB";
+  const part = nameOrEmail.split("@")[0] || "";
+  const clean = part.replace(/[^a-zA-Z]/g, " ");
+  return (clean.split(/\s+/).filter(Boolean).map((w) => w[0] || "").join("").slice(0, 2).toUpperCase() || "MB");
+}
+
+async function loadMembers() {
+  isLoading.value = true;
+  const { data: sessionData } = await supabase.auth.getSession();
+  const email = sessionData.session?.user.email;
+
+  if (email) {
+    const { data: userData } = await supabase
+      .from("users")
+      .select("org_id")
+      .ilike("email", email)
+      .maybeSingle();
+
+    if (userData?.org_id) {
+      // Get Org Name
+      const { data: orgData } = await supabase
+        .from("orgs")
+        .select("name")
+        .eq("org_id", userData.org_id)
+        .single();
+      if (orgData) orgName.value = orgData.name;
+
+      // Get Members
+      const { data, error } = await supabase
+      .from("members")
+      .select("*")
+      .eq("org_id", userData.org_id)
+      .order("email");  
+
+      if (data) {
+        members.value = data.map((m: any) => ({
+          ...m,
+          position: m.position || "Member",
+          year: m.year || 2025,
+          is_active: m.is_active ?? true,
+        }));
+      }
+    }
+  }
+  isLoading.value = false;
+}
+
+// Filtered List based on Active/Archived tab and Search
+const filteredMembers = computed(() => {
+  const query = searchQuery.value.toLowerCase().trim();
+  const showActive = activeTab.value === "active";
+
+  return members.value.filter((member) => {
+    const matchesTab = member.is_active === showActive;
+    const matchesSearch =
+      !query ||
+      member.email.toLowerCase().includes(query) ||
+      (member.full_name && member.full_name.toLowerCase().includes(query)) ||
+      (member.position && member.position.toLowerCase().includes(query)) ||
+      String(member.year).includes(query);
+
+    return matchesTab && matchesSearch;
+  });
+});
+
+// Paginated subset
+const totalPages = computed(() => Math.ceil(filteredMembers.value.length / itemsPerPage) || 1);
+const paginatedMembers = computed(() => {
+  const start = (currentPage.value - 1) * itemsPerPage;
+  return filteredMembers.value.slice(start, start + itemsPerPage);
+});
+
+// Toggle Deactivate / Activate
+async function toggleActiveStatus(member: Member) {
+  const newStatus = !member.is_active;
+  const { error } = await supabase
+  .from("members")
+  .update({ is_active: newStatus })
+  .eq("member_id", member.member_id);
+
+  if (!error) {
+    member.is_active = newStatus;
+  }
+}
+
+// Open Edit Position Modal
+function openEditPosition(member: Member) {
+  editingMember.value = member;
+  newPosition.value = member.position || "Member";
+  showEditModal.value = true;
+}
+
+async function savePosition() {
+  const member = editingMember.value;
+   if (!member) return;
+  const { error } = await supabase
+    .from("members")
+    .update({ position: newPosition.value }) 
+    .eq("member_id", member.member_id);
+  if (!error) {
+    member.position = newPosition.value;
+    showEditModal.value = false;
+  }
+}
+
+// Export Roster as CSV
+function exportRoster() {
+  if (!filteredMembers.value.length) return;
+
+  const headers = ["Student ID", "Full Name", "Email", "Position", "Year", "Status"];
+  const rows = filteredMembers.value.map((m) => [
+    m.student_id || "",
+    m.full_name || "",
+    m.email,
+    m.position || "Member",
+    m.year || "",
+    m.is_active ? "Active" : "Archived",
+  ]);
+
+  const csvContent =
+    "data:text/csv;charset=utf-8," +
+    [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");
+
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", `member_roster_${Date.now()}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+onMounted(() => {
+  loadMembers();
+});
+</script>
+
+<template>
+  <main class="flex-1 h-full overflow-y-auto bg-white p-8">
+    
+    <!-- Top Header & Export Button -->
+    <div class="flex flex-col justify-between gap-4 border-b border-[#eee] pb-4 sm:flex-row sm:items-center">
+      <div>
+        <h1 class="text-3xl font-extrabold text-[#1a1a1a]">Member Roster</h1>
+        <p class="mt-1 text-xs text-[#777]">
+          {{ orgName || "Collegiate Film & Photo" }} · Manage member positions and active status (is_active) from the supported schema.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        @click="exportRoster"
+        class="inline-flex items-center gap-2 rounded-lg border border-[#d5d5d5] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#333] transition hover:bg-gray-50 shadow-sm"
+      >
+        <span>⭳</span> Export roster
+      </button>
+    </div>
+
+    <!-- Filter & Search Row -->
+    <div class="mt-6 flex flex-wrap items-center justify-between gap-4 border-b border-[#eee] pb-4">
+      <!-- Active / Archived Tabs -->
+      <div class="flex items-center gap-6">
+        <button
+          type="button"
+          class="pb-1 text-sm font-bold transition"
+          :class="activeTab === 'active' ? 'border-b-2 border-[#1a1a1a] text-[#1a1a1a]' : 'text-[#888] hover:text-[#444]'"
+          @click="activeTab = 'active'; currentPage = 1"
+        >
+          Active
+        </button>
+        <button
+          type="button"
+          class="pb-1 text-sm font-bold transition"
+          :class="activeTab === 'archived' ? 'border-b-2 border-[#1a1a1a] text-[#1a1a1a]' : 'text-[#888] hover:text-[#444]'"
+          @click="activeTab = 'archived'; currentPage = 1"
+        >
+          Archived
+        </button>
+      </div>
+
+      <!-- Search Input -->
+      <div class="relative w-80">
+        <Search class="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+        <input
+          v-model="searchQuery"
+          type="search"
+          placeholder="Search by email, position, or year"
+          class="w-full rounded-full bg-[#f1f1f1] py-1.5 pl-9 pr-4 text-xs text-[#222] outline-none focus:ring-1 focus:ring-[#6b0207]"
+        />
+      </div>
+    </div>
+
+    <!-- Results Counter Row -->
+    <div class="mt-4 flex items-center justify-between text-xs text-[#555]">
+      <span class="font-bold text-[#111]">{{ filteredMembers.length }} Results</span>
+      <span class="text-[11px] text-[#888]">
+        {{ activeTab === 'active' ? 'Active members' : 'Archived members' }} · Showing {{ paginatedMembers.length }} of {{ filteredMembers.length }}
+      </span>
+    </div>
+
+    <!-- Loading State -->
+    <div v-if="isLoading" class="py-12 text-center text-xs text-gray-500">
+      Loading member roster...
+    </div>
+
+    <!-- Table Container -->
+    <div v-else-if="filteredMembers.length" class="mt-4 overflow-hidden rounded-xl border border-[#e5e5e5]">
+      <table class="w-full text-left text-xs text-[#333]">
+        <thead class="bg-[#d9d9d9] text-[11px] font-semibold text-[#333]">
+          <tr>
+            <th class="px-5 py-3">Email</th>
+            <th class="px-4 py-3">Position</th>
+            <th class="px-4 py-3">Status</th>
+            <th class="px-4 py-3">Year</th>
+            <th class="px-4 py-3 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-[#efefef] bg-white">
+          <tr
+            v-for="member in paginatedMembers"
+            :key="member.member_id"
+            class="transition hover:bg-gray-50"
+          >
+            <!-- Email + Avatar -->
+            <td class="px-5 py-3.5 font-medium text-[#222]">
+              <div class="flex items-center gap-3">
+                <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-[#ebebeb] text-[10px] font-bold text-[#555]">
+                  {{ getInitials(member.full_name || member.email) }}
+                </div>
+                <span>{{ member.email }}</span>
+              </div>
+            </td>
+
+            <!-- Position -->
+            <td class="px-4 py-3.5 text-[#333] font-medium">
+              {{ member.position || "Member" }}
+            </td>
+
+            <!-- Status Pill -->
+            <td class="px-4 py-3.5">
+              <span
+                class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold"
+                :class="member.is_active ? 'text-emerald-700 bg-emerald-50' : 'text-gray-600 bg-gray-100'"
+              >
+                <span class="h-1.5 w-1.5 rounded-full" :class="member.is_active ? 'bg-emerald-500' : 'bg-gray-400'"></span>
+                {{ member.is_active ? "Active" : "Archived" }}
+              </span>
+            </td>
+
+            <!-- Year -->
+            <td class="px-4 py-3.5 text-[#777]">
+              {{ member.year || 2025 }}
+            </td>
+
+            <!-- Actions (Edit position & Deactivate) -->
+            <td class="px-4 py-3.5 text-right">
+              <div class="inline-flex items-center gap-2">
+                <button
+                  type="button"
+                  @click="openEditPosition(member)"
+                  class="inline-flex items-center gap-1.5 rounded-lg border border-[#d5d5d5] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#444] transition hover:bg-gray-50"
+                >
+                  <Pencil class="h-3 w-3" />
+                  <span>Edit position</span>
+                </button>
+                <button
+                  type="button"
+                  @click="toggleActiveStatus(member)"
+                  class="inline-flex items-center gap-1.5 rounded-lg border border-[#d5d5d5] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#444] transition hover:bg-gray-50"
+                >
+                  <Inbox class="h-3 w-3" />
+                  <span>{{ activeTab === "active" ? "Deactivate" : "Activate" }}</span>
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Empty State -->
+    <div
+      v-else
+      class="mt-8 rounded-xl border border-dashed border-[#ddd] p-12 text-center text-xs text-[#888]"
+    >
+      No {{ activeTab }} members found.
+    </div>
+
+    <!-- Pagination Footer -->
+    <div v-if="filteredMembers.length > 0" class="mt-4 flex items-center justify-between text-xs text-[#777]">
+      <p>Showing 1–{{ paginatedMembers.length }} of {{ filteredMembers.length }} members</p>
+
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          :disabled="currentPage === 1"
+          @click="currentPage--"
+          class="rounded px-2.5 py-1 border text-xs font-semibold disabled:opacity-40 hover:bg-gray-50"
+        >
+          Previous
+        </button>
+        <span class="rounded bg-[#6b0207] px-2.5 py-1 text-xs font-bold text-white">
+          {{ currentPage }}
+        </span>
+        <span class="text-xs text-[#888]">of {{ totalPages }}</span>
+        <button
+          type="button"
+          :disabled="currentPage >= totalPages"
+          @click="currentPage++"
+          class="rounded px-2.5 py-1 border text-xs font-semibold disabled:opacity-40 hover:bg-gray-50"
+        >
+          Next >
+        </button>
+      </div>
+    </div>
+
+    <!-- Footer Note -->
+    <div class="mt-8 border-t border-[#eee] pt-4 text-[11px] text-[#888]">
+      <p>ⓘ "Deactivate" sets is_active = false for the member. Their record remains available in the Archived tab and can be reactivated at any time.</p>
+    </div>
+
+    <!-- Edit Position Modal -->
+    <div
+      v-if="showEditModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+    >
+      <div class="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+        <h2 class="text-sm font-bold text-[#222]">Edit Member Position</h2>
+        <p class="mt-1 text-xs text-[#777]">{{ editingMember?.email }}</p>
+
+        <div class="mt-4">
+          <label class="block text-xs font-bold text-[#333]">
+            Position Title
+            <input
+              v-model="newPosition"
+              type="text"
+              placeholder="e.g. President, Secretary, Media Coordinator"
+              class="mt-1.5 w-full rounded-lg bg-[#f1f1f1] px-3.5 py-2 text-xs text-[#222] outline-none focus:bg-white focus:ring-1 focus:ring-[#6b0207]"
+            />
+          </label>
+        </div>
+
+        <div class="mt-5 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            @click="showEditModal = false"
+            class="rounded-lg px-4 py-2 text-xs font-semibold text-[#555] hover:bg-gray-100"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            @click="savePosition"
+            class="rounded-lg bg-[#6b0207] px-4 py-2 text-xs font-bold text-white hover:bg-[#520105]"
+          >
+            Save Position
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</template>
