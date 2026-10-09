@@ -18,7 +18,6 @@ const isLoading = ref(true);
 const orgId = ref<number | null>(null);
 const orgName = ref("");
 
-// Modal states
 const showCreateModal = ref(false);
 const isSaving = ref(false);
 const postTitle = ref("");
@@ -78,7 +77,6 @@ async function createPost() {
 
   isSaving.value = true;
 
-  // 1. Insert into posts table
   const { data: newPost, error: postError } = await supabase
     .from("posts")
     .insert([
@@ -95,7 +93,7 @@ async function createPost() {
   if (newPost && !postError) {
     const imgUrl = postImageUrl.value.trim();
 
-    // 2. If image URL was provided, insert into posts_images
+
     if (imgUrl) {
       await supabase.from("posts_images").insert([
         {
@@ -144,7 +142,7 @@ onMounted(() => {
 
 <template>
   <main class="flex-1 h-full overflow-y-auto bg-white p-8 font-sans">
-    <!-- Header Row -->
+
     <div class="flex flex-col justify-between gap-4 border-b border-[#eee] pb-4 sm:flex-row sm:items-center">
       <div>
         <h1 class="text-3xl font-extrabold text-[#1a1a1a]">Manage Posts</h1>
@@ -163,12 +161,9 @@ onMounted(() => {
       </button>
     </div>
 
-    <!-- Loading State -->
     <div v-if="isLoading" class="py-16 text-center text-xs text-gray-500">
       Loading posts...
     </div>
-
-    <!-- Posts Grid -->
     <div v-else-if="posts.length > 0" class="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       <div
         v-for="post in posts"
@@ -202,7 +197,6 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Empty State -->
     <div
       v-else
       class="mt-12 rounded-2xl border border-dashed border-[#ddd] p-16 text-center"
@@ -222,7 +216,6 @@ onMounted(() => {
       </button>
     </div>
 
-    <!-- Create Post Modal -->
     <div
       v-if="showCreateModal"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"

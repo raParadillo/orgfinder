@@ -28,15 +28,12 @@ const searchQuery = ref("");
 const isLoading = ref(true);
 const isSaving = ref(false);
 
-// Editing state for the selected application
 const draftStatus = ref<"pending" | "approved" | "declined">("pending");
 const draftNotes = ref("");
 
-// Pagination
 const currentPage = ref(1);
 const itemsPerPage = 5;
 
-// Initial Avatar generator
 function getInitials(name: string) {
   return (
     name

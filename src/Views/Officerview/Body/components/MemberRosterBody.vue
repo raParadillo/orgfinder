@@ -21,11 +21,9 @@ const activeTab = ref<"active" | "archived">("active");
 const searchQuery = ref("");
 const isLoading = ref(true);
 
-// Pagination
 const currentPage = ref(1);
 const itemsPerPage = 8;
 
-// Edit Position Modal State
 const showEditModal = ref(false);
 const editingMember = ref<Member | null>(null);
 const newPosition = ref("");
@@ -50,7 +48,6 @@ async function loadMembers() {
       .maybeSingle();
 
     if (userData?.org_id) {
-      // Get Org Name
       const { data: orgData } = await supabase
         .from("orgs")
         .select("name")
@@ -58,7 +55,6 @@ async function loadMembers() {
         .single();
       if (orgData) orgName.value = orgData.name;
 
-      // Get Members
       const { data, error } = await supabase
       .from("members")
       .select("*")
@@ -78,7 +74,6 @@ async function loadMembers() {
   isLoading.value = false;
 }
 
-// Filtered List based on Active/Archived tab and Search
 const filteredMembers = computed(() => {
   const query = searchQuery.value.toLowerCase().trim();
   const showActive = activeTab.value === "active";
@@ -96,14 +91,12 @@ const filteredMembers = computed(() => {
   });
 });
 
-// Paginated subset
 const totalPages = computed(() => Math.ceil(filteredMembers.value.length / itemsPerPage) || 1);
 const paginatedMembers = computed(() => {
   const start = (currentPage.value - 1) * itemsPerPage;
   return filteredMembers.value.slice(start, start + itemsPerPage);
 });
 
-// Toggle Deactivate / Activate
 async function toggleActiveStatus(member: Member) {
   const newStatus = !member.is_active;
   const { error } = await supabase
@@ -116,7 +109,6 @@ async function toggleActiveStatus(member: Member) {
   }
 }
 
-// Open Edit Position Modal
 function openEditPosition(member: Member) {
   editingMember.value = member;
   newPosition.value = member.position || "Member";
@@ -136,7 +128,6 @@ async function savePosition() {
   }
 }
 
-// Export Roster as CSV
 function exportRoster() {
   if (!filteredMembers.value.length) return;
 
@@ -171,7 +162,6 @@ onMounted(() => {
 <template>
   <main class="flex-1 h-full overflow-y-auto bg-white p-8">
     
-    <!-- Top Header & Export Button -->
     <div class="flex flex-col justify-between gap-4 border-b border-[#eee] pb-4 sm:flex-row sm:items-center">
       <div>
         <h1 class="text-3xl font-extrabold text-[#1a1a1a]">Member Roster</h1>
@@ -189,9 +179,7 @@ onMounted(() => {
       </button>
     </div>
 
-    <!-- Filter & Search Row -->
     <div class="mt-6 flex flex-wrap items-center justify-between gap-4 border-b border-[#eee] pb-4">
-      <!-- Active / Archived Tabs -->
       <div class="flex items-center gap-6">
         <button
           type="button"
@@ -211,7 +199,6 @@ onMounted(() => {
         </button>
       </div>
 
-      <!-- Search Input -->
       <div class="relative w-80">
         <Search class="pointer-events-none absolute left-3.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
         <input
@@ -223,7 +210,6 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Results Counter Row -->
     <div class="mt-4 flex items-center justify-between text-xs text-[#555]">
       <span class="font-bold text-[#111]">{{ filteredMembers.length }} Results</span>
       <span class="text-[11px] text-[#888]">
@@ -231,12 +217,9 @@ onMounted(() => {
       </span>
     </div>
 
-    <!-- Loading State -->
     <div v-if="isLoading" class="py-12 text-center text-xs text-gray-500">
       Loading member roster...
     </div>
-
-    <!-- Table Container -->
     <div v-else-if="filteredMembers.length" class="mt-4 overflow-hidden rounded-xl border border-[#e5e5e5]">
       <table class="w-full text-left text-xs text-[#333]">
         <thead class="bg-[#d9d9d9] text-[11px] font-semibold text-[#333]">
@@ -254,7 +237,6 @@ onMounted(() => {
             :key="member.member_id"
             class="transition hover:bg-gray-50"
           >
-            <!-- Email + Avatar -->
             <td class="px-5 py-3.5 font-medium text-[#222]">
               <div class="flex items-center gap-3">
                 <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-[#ebebeb] text-[10px] font-bold text-[#555]">
@@ -264,12 +246,9 @@ onMounted(() => {
               </div>
             </td>
 
-            <!-- Position -->
             <td class="px-4 py-3.5 text-[#333] font-medium">
               {{ member.position || "Member" }}
             </td>
-
-            <!-- Status Pill -->
             <td class="px-4 py-3.5">
               <span
                 class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-semibold"
@@ -280,12 +259,9 @@ onMounted(() => {
               </span>
             </td>
 
-            <!-- Year -->
             <td class="px-4 py-3.5 text-[#777]">
               {{ member.year || 2025 }}
             </td>
-
-            <!-- Actions (Edit position & Deactivate) -->
             <td class="px-4 py-3.5 text-right">
               <div class="inline-flex items-center gap-2">
                 <button
@@ -311,7 +287,6 @@ onMounted(() => {
       </table>
     </div>
 
-    <!-- Empty State -->
     <div
       v-else
       class="mt-8 rounded-xl border border-dashed border-[#ddd] p-12 text-center text-xs text-[#888]"
@@ -319,7 +294,6 @@ onMounted(() => {
       No {{ activeTab }} members found.
     </div>
 
-    <!-- Pagination Footer -->
     <div v-if="filteredMembers.length > 0" class="mt-4 flex items-center justify-between text-xs text-[#777]">
       <p>Showing 1–{{ paginatedMembers.length }} of {{ filteredMembers.length }} members</p>
 
@@ -347,12 +321,9 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Footer Note -->
     <div class="mt-8 border-t border-[#eee] pt-4 text-[11px] text-[#888]">
       <p>ⓘ "Deactivate" sets is_active = false for the member. Their record remains available in the Archived tab and can be reactivated at any time.</p>
     </div>
-
-    <!-- Edit Position Modal -->
     <div
       v-if="showEditModal"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
