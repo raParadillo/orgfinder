@@ -9,7 +9,6 @@ const isSaving = ref(false);
 const errorMessage = ref("");
 const successMessage = ref("");
 
-// Form Fields
 const name = ref("");
 const category = ref("academic");
 const description = ref("");
@@ -25,7 +24,6 @@ const categories = [
   { value: "other", label: "Other" },
 ];
 
-// Computed acronym for logo placeholder
 const acronym = computed(() => {
   if (!name.value) return "ORG";
   return name.value
@@ -37,7 +35,6 @@ const acronym = computed(() => {
     .toUpperCase();
 });
 
-// Load the current officer's organization data
 async function loadOrgProfile() {
   isLoading.value = true;
   errorMessage.value = "";
@@ -50,7 +47,6 @@ async function loadOrgProfile() {
     return;
   }
 
-  // 1. Get officer user's org_id
   const { data: userData } = await supabase
     .from("users")
     .select("org_id")
@@ -60,7 +56,6 @@ async function loadOrgProfile() {
   if (userData?.org_id) {
     orgId.value = userData.org_id;
 
-    // 2. Fetch the organization record
     const { data: orgData } = await supabase
       .from("orgs")
       .select("org_id, name, category, description, fb_url, logo_url, is_active")
@@ -82,7 +77,6 @@ async function loadOrgProfile() {
   isLoading.value = false;
 }
 
-// Upload new logo to Supabase storage
 async function handleLogoUpload(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file || !orgId.value) return;
@@ -116,8 +110,6 @@ async function setStatus(active: boolean) {
   }
 }
 
-
-// Save Changes to Supabase
 async function handleSaveChanges() {
   if (!orgId.value) return;
 
@@ -158,8 +150,7 @@ onMounted(() => {
 
 <template>
   <main class="flex-1 h-full overflow-y-auto bg-white p-8">
-    
-    <!-- Header with Preview Public Page button -->
+
     <div class="flex flex-col justify-between gap-4 border-b border-[#eee] pb-4 sm:flex-row sm:items-center">
       <div>
         <h1 class="text-3xl font-extrabold text-[#1a1a1a]">Edit Profile</h1>
@@ -178,7 +169,6 @@ onMounted(() => {
       </RouterLink>
     </div>
 
-    <!-- Alert Banners -->
     <div v-if="successMessage" class="mt-4 rounded-lg bg-emerald-50 p-3 text-xs font-semibold text-emerald-700">
       {{ successMessage }}
     </div>
@@ -190,13 +180,10 @@ onMounted(() => {
       Loading organization details...
     </div>
 
-    <!-- 2-Column Form Layout -->
     <form v-else class="mt-6 grid grid-cols-1 gap-10 lg:grid-cols-3" @submit.prevent="handleSaveChanges">
-      
-      <!-- LEFT COLUMN: Main Form Inputs (2/3 width) -->
+
       <div class="space-y-6 lg:col-span-2">
-        
-        <!-- 1. Basic Information -->
+
         <div>
           <h2 class="text-sm font-bold text-[#222]">Basic information</h2>
           <label class="mt-2 block text-xs font-semibold text-[#555]">
@@ -210,7 +197,6 @@ onMounted(() => {
           </label>
         </div>
 
-        <!-- 2. Category -->
         <div>
           <h2 class="text-sm font-bold text-[#222]">Category</h2>
           <label class="mt-2 block text-xs font-semibold text-[#555]">
@@ -223,7 +209,6 @@ onMounted(() => {
           </label>
         </div>
 
-        <!-- 3. About the Organization -->
         <div>
           <h2 class="text-sm font-bold text-[#222]">About the organization</h2>
           <label class="mt-2 block text-xs font-semibold text-[#555]">
@@ -239,7 +224,6 @@ onMounted(() => {
           </p>
         </div>
 
-        <!-- 4. Social Links -->
         <div>
           <h2 class="text-sm font-bold text-[#222]">Social links</h2>
           <label class="mt-2 block text-xs font-semibold text-[#555]">
@@ -258,15 +242,13 @@ onMounted(() => {
 
       </div>
 
-      <!-- RIGHT COLUMN: Side Cards (1/3 width) -->
       <div class="space-y-6">
-        
-        <!-- Organization Logo Card -->
+
         <div class="rounded-xl border border-[#e5e5e5] bg-white p-5 shadow-sm">
           <h2 class="text-xs font-bold text-[#222]">Organization logo</h2>
           
           <div class="mt-4 flex items-center gap-4">
-            <!-- Logo Preview -->
+
             <img
               v-if="logoUrl"
               :src="logoUrl"
@@ -280,7 +262,6 @@ onMounted(() => {
               {{ acronym }}
             </div>
 
-            <!-- Upload Button -->
             <label class="cursor-pointer rounded-lg border border-[#d5d5d5] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#333] transition hover:bg-gray-50">
               <span>⭡ Change logo</span>
               <input type="file" accept="image/*" class="hidden" @change="handleLogoUpload" />
@@ -289,20 +270,17 @@ onMounted(() => {
           <p class="mt-3 text-[10px] text-[#999]">Square JPG or PNG · Max 2 MB</p>
         </div>
 
-        <!-- Organization Status Card -->
         <div class="rounded-xl border border-[#e5e5e5] bg-white p-5 shadow-sm">
           <h2 class="text-xs font-bold text-[#222]">Organization status</h2>
           
           <div class="mt-3 grid grid-cols-2 gap-2">
-    
-            <!-- Active Option -->
+
             <button type="button" @click="setStatus(true)" class="flex items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-semibold transition" :class="isActive ? 'border-[#6b0207] bg-rose-50 text-[#6b0207]' : 'border-[#e0e0e0] text-[#777] hover:bg-gray-50'">
               <Check v-if="isActive" class="h-3 w-3 text-[#6b0207]" />
               <span v-else class="h-2 w-2 rounded-full border border-gray-400"></span>
               <span>Active</span>
             </button>
 
-            <!-- Archived Option -->
             <button type="button" @click="setStatus(false)" class="flex items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-semibold transition" :class="!isActive ? 'border-[#6b0207] bg-rose-50 text-[#6b0207]' : 'border-[#e0e0e0] text-[#777] hover:bg-gray-50'">
               <Check v-if="!isActive" class="h-3 w-3 text-[#6b0207]" />
               <span v-else class="h-2 w-2 rounded-full border border-gray-400"></span>
@@ -318,7 +296,6 @@ onMounted(() => {
 
       </div>
 
-      <!-- BOTTOM ACTION ROW (Full width) -->
       <div class="border-t border-[#eee] pt-4 flex flex-col sm:flex-row items-center justify-between gap-4 lg:col-span-3">
         <p class="text-[11px] text-[#888]">
           Changes become visible on your public organization page after saving.

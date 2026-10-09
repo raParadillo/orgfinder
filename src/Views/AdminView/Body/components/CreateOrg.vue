@@ -8,7 +8,6 @@ const router = useRouter();
 const isSubmitting = ref(false);
 const errorMessage = ref("");
 
-// Form Fields
 const name = ref("");
 const category = ref("");
 const description = ref("");
@@ -24,7 +23,6 @@ const categories = [
   { value: "other", label: "Other" },
 ];
 
-// Computed acronym for logo placeholder
 const acronym = computed(() => {
   if (!name.value) return "ORG";
   return name.value
@@ -36,7 +34,6 @@ const acronym = computed(() => {
     .toUpperCase();
 });
 
-// Handle Image Upload (Optional file upload to Supabase storage)
 async function handleLogoUpload(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file) return;
