@@ -155,6 +155,7 @@ onMounted(async () => {
                 v-if="organization.logo_url"
                 class="size-20 max-h-20 max-w-20 shrink-0 rounded-lg border-2 border-white object-contain"
                 :src="organization.logo_url"
+                @error="organization.logo_url = null"
                 :alt="`${organization.name} logo`"
               />
               <div v-else class="flex size-10 max-h-10 max-w-10 shrink-0 items-center justify-center rounded-lg border-2 border-white bg-[#1d1d1d] text-sm font-bold text-[#ffca28]">

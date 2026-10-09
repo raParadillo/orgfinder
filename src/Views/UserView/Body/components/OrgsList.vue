@@ -15,11 +15,15 @@ const props = withDefaults(
 	defineProps<{
 		title?: string
 		organizations: Organization[]
+		showArchive?: boolean
 	}>(),
 	{
 		title: "Explore Guilds",
+		showArchive: false,
 	},
 )
+
+
 
 const visibleCount = ref(12)
 const loadMoreTrigger = ref<HTMLElement | null>(null)
@@ -46,6 +50,7 @@ watch(
 
 const emit = defineEmits<{
 	view: [organization: Organization]
+	archive: [organization: Organization]
 }>()
 
 watch(loadMoreTrigger, (element) => {
@@ -72,6 +77,7 @@ onBeforeUnmount(() => observer.disconnect())
 						v-if="organization.logo_url"
 						class="size-8 shrink-0 rounded object-cover"
 						:src="organization.logo_url"
+						@error="organization.logo_url = null"
 						:alt="`${organization.name} logo`"
 					/>
 					<span v-else class="rounded bg-[#1d1d1d] px-1.5 py-1 text-[0.6rem] font-bold text-[#ffca28]">
@@ -101,6 +107,14 @@ onBeforeUnmount(() => observer.disconnect())
 						@click="emit('view', organization)"
 					>
 						View
+					</button>
+
+					<button v-if="showArchive"
+						class="rounded bg-rose-100 px-2 py-1.5 text-[0.6rem] font-semibold text-[#8f0c12] transition hover:bg-rose-200"
+						type="button"
+						@click="emit('archive', organization)"
+					>
+						Archive
 					</button>
 			
 				</div>
