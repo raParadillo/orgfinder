@@ -157,13 +157,7 @@ onMounted(() => {
           <span class="h-2 w-2 rounded-full bg-emerald-500"></span>
           Active
         </span>
-        <RouterLink
-          :to="org?.org_id ? `/org/${org.org_id}` : '/'"
-          target="_blank"
-          class="rounded-lg border border-[#d5d5d5] bg-white px-3 py-1.5 text-xs font-semibold text-[#333] no-underline transition hover:bg-gray-50"
-        >
-          ↗ Preview org page
-        </RouterLink>
+        
       </div>
     </div>
 

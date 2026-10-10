@@ -23,7 +23,9 @@ const isSaving = ref(false);
 const postTitle = ref("");
 const postCategory = ref("announcement");
 const postContent = ref("");
-const postImageUrl = ref("");
+const postImageFile = ref<File | null>(null);
+const postImagePreview = ref("");
+const formError = ref("");
 
 async function loadPosts() {
   isLoading.value = true;
@@ -76,6 +78,31 @@ async function createPost() {
   if (!postTitle.value.trim() || !orgId.value) return;
 
   isSaving.value = true;
+  formError.value = "";
+
+  let uploadedImagePath = "";
+  let imageUrl = "";
+
+  if (postImageFile.value) {
+    const file = postImageFile.value;
+    const fileExtension = file.name.split(".").pop()?.toLowerCase() || "jpg";
+    uploadedImagePath = `org-${orgId.value}/${Date.now()}.${fileExtension}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("post-images")
+      .upload(uploadedImagePath, file);
+
+    if (uploadError) {
+      formError.value = uploadError.message || "Unable to upload the post image.";
+      isSaving.value = false;
+      return;
+    }
+
+    const { data: publicImage } = supabase.storage
+      .from("post-images")
+      .getPublicUrl(uploadedImagePath);
+    imageUrl = publicImage.publicUrl;
+  }
 
   const { data: newPost, error: postError } = await supabase
     .from("posts")
@@ -91,30 +118,60 @@ async function createPost() {
     .single();
 
   if (newPost && !postError) {
-    const imgUrl = postImageUrl.value.trim();
-
-
-    if (imgUrl) {
-      await supabase.from("posts_images").insert([
+    if (imageUrl) {
+      const { error: imageError } = await supabase.from("posts_images").insert([
         {
           post_id: newPost.post_id,
-          img_url: imgUrl,
+          img_url: imageUrl,
         },
       ]);
-      newPost.image_url = imgUrl;
+
+      if (imageError) {
+        formError.value = imageError.message || "Post was created, but the image could not be saved.";
+        newPost.image_url = imageUrl;
+      } else {
+        newPost.image_url = imageUrl;
+      }
     }
 
     posts.value.unshift(newPost);
     showCreateModal.value = false;
     postTitle.value = "";
     postContent.value = "";
-    postImageUrl.value = "";
+    postImageFile.value = null;
+    postImagePreview.value = "";
     postCategory.value = "Announcement";
   } else if (postError) {
-    console.error("Error creating post:", postError.message);
+    if (uploadedImagePath) {
+      await supabase.storage.from("post-images").remove([uploadedImagePath]);
+    }
+    formError.value = postError.message || "Unable to create the post.";
   }
 
   isSaving.value = false;
+}
+
+function handlePostImageUpload(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+
+  formError.value = "";
+  if (!file.type.startsWith("image/")) {
+    formError.value = "Please select an image file.";
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    formError.value = "The image must be 5 MB or smaller.";
+    return;
+  }
+
+  postImageFile.value = file;
+  postImagePreview.value = URL.createObjectURL(file);
+}
+
+function clearPostImage() {
+  postImageFile.value = null;
+  postImagePreview.value = "";
 }
 
 
@@ -268,14 +325,41 @@ onMounted(() => {
           </div>
 
           <div>
-            <label class="block text-xs font-bold text-[#333]">Image URL (Optional)</label>
-            <input
-              v-model="postImageUrl"
-              type="url"
-              placeholder="https://example.com/image.jpg"
-              class="mt-1 w-full rounded-lg bg-[#f1f1f1] px-3.5 py-2 text-xs text-[#222] outline-none focus:bg-white focus:ring-1 focus:ring-[#6b0207]"
-            />
+            <label class="block text-xs font-bold text-[#333]">Post image (Optional)</label>
+            <div class="mt-1 rounded-lg border border-dashed border-[#d5d5d5] p-3">
+              <div v-if="postImagePreview" class="mb-3 flex items-center gap-3">
+                <img
+                  :src="postImagePreview"
+                  alt="Selected post preview"
+                  class="h-16 w-16 rounded-lg object-cover"
+                />
+                <div class="min-w-0 flex-1">
+                  <p class="truncate text-xs font-semibold text-[#333]">{{ postImageFile?.name }}</p>
+                  <button
+                    type="button"
+                    class="mt-1 text-[11px] font-semibold text-[#6b0207] hover:underline"
+                    @click="clearPostImage"
+                  >
+                    Remove image
+                  </button>
+                </div>
+              </div>
+              <label class="inline-flex cursor-pointer items-center rounded-lg border border-[#d5d5d5] bg-white px-3.5 py-2 text-xs font-semibold text-[#333] transition hover:bg-gray-50">
+                <span>{{ postImageFile ? "Choose another image" : "Upload image" }}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  class="hidden"
+                  @change="handlePostImageUpload"
+                />
+              </label>
+              <p class="mt-2 text-[10px] text-[#999]">JPG, PNG, or GIF · Max 5 MB</p>
+            </div>
           </div>
+
+          <p v-if="formError" class="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+            {{ formError }}
+          </p>
 
           <div class="mt-6 flex items-center justify-end gap-3 pt-2">
             <button

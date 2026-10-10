@@ -27,6 +27,7 @@ const activeTab = ref<"all" | "pending" | "approved" | "declined">("all");
 const searchQuery = ref("");
 const isLoading = ref(true);
 const isSaving = ref(false);
+const loadError = ref("");
 
 const draftStatus = ref<"pending" | "approved" | "declined">("pending");
 const draftNotes = ref("");
@@ -70,119 +71,63 @@ function formatDateTime(dateStr?: string) {
 
 async function loadApplications() {
   isLoading.value = true;
-  const { data: sessionData } = await supabase.auth.getSession();
+  loadError.value = "";
+  applications.value = [];
+  selectedApp.value = null;
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) {
+    loadError.value = sessionError.message;
+    isLoading.value = false;
+    return;
+  }
+
   const email = sessionData.session?.user?.email;
 
-  if (email) {
-    const { data: userData } = await supabase
-      .from("users")
-      .select("org_id")
-      .ilike("email", email)
-      .maybeSingle();
-
-    if (userData?.org_id) {
-      orgId.value = userData.org_id;
-
-      const { data: orgData } = await supabase
-        .from("orgs")
-        .select("name")
-        .eq("org_id", userData.org_id)
-        .single();
-      if (orgData) orgName.value = orgData.name;
-
-      const { data } = await supabase
-        .from("applications")
-        .select("*")
-        .eq("org_id", userData.org_id)
-        .order("created_at", { ascending: false });
-
-      if (data && data.length > 0) {
-        applications.value = data.map((a: any) => ({
-          ...a,
-          app_id: a.application_id ?? a.app_id,
-          application_id: a.application_id ?? a.app_id,
-          status: (a.status === "rejected" ? "declined" : a.status) || "pending",
-        }));
-        if (applications.value[0]) {
-            selectApplication(applications.value[0]);
-        }
-
-    }
+  if (!email) {
+    loadError.value = "You must be signed in to view applications.";
+    isLoading.value = false;
+    return;
   }
-}
 
-  if (applications.value.length === 0) {
-    applications.value = [
-      {
-        app_id: 1042,
-        org_id: 1,
-        student_id: "STU-2026-0187",
-        full_name: "Alyssa Mendoza",
-        email: "alyssa.mendoza@liceo.edu.ph",
-        contact_no: "+63 917 842 1630",
-        fb_url: "facebook.com/alyssa.mendoza",
-        status: "pending",
-        custom_notes: "Portfolio link received through Facebook. Review during next officer meeting.",
-        created_at: "2026-10-01T09:42:00Z",
-        updated_at: "2026-10-01T09:42:00Z",
-      },
-      {
-        app_id: 1043,
-        org_id: 1,
-        student_id: "STU-2026-0210",
-        full_name: "Gabriel Lim",
-        email: "gabriel.lim@liceo.edu.ph",
-        contact_no: "+63 918 555 1234",
-        fb_url: "facebook.com/gabriel.lim",
-        status: "pending",
-        custom_notes: "",
-        created_at: "2026-10-01T11:15:00Z",
-        updated_at: "2026-10-01T11:15:00Z",
-      },
-      {
-        app_id: 1044,
-        org_id: 1,
-        student_id: "STU-2026-0331",
-        full_name: "Chloe Navarro",
-        email: "chloe.navarro@liceo.edu.ph",
-        contact_no: "+63 917 222 3456",
-        fb_url: "facebook.com/chloe.navarro",
-        status: "pending",
-        custom_notes: "Interested in film production crew.",
-        created_at: "2026-09-30T14:20:00Z",
-        updated_at: "2026-09-30T14:20:00Z",
-      },
-      {
-        app_id: 1045,
-        org_id: 1,
-        student_id: "STU-2026-0412",
-        full_name: "Paolo Reyes",
-        email: "paolo.reyes@liceo.edu.ph",
-        contact_no: "+63 919 444 8888",
-        fb_url: "facebook.com/paolo.reyes",
-        status: "approved",
-        custom_notes: "Accepted as junior editor.",
-        created_at: "2026-09-27T10:00:00Z",
-        updated_at: "2026-09-29T16:00:00Z",
-      },
-      {
-        app_id: 1046,
-        org_id: 1,
-        student_id: "STU-2026-0520",
-        full_name: "Mara Villanueva",
-        email: "mara.villanueva@liceo.edu.ph",
-        contact_no: "+63 915 999 7777",
-        fb_url: "facebook.com/mara.villanueva",
-        status: "declined",
-        custom_notes: "Declined due to schedule conflict.",
-        created_at: "2026-09-22T08:30:00Z",
-        updated_at: "2026-09-25T13:45:00Z",
-      },
-    ];
-    if (applications.value[0]) {
-      selectApplication(applications.value[0]);
-}
+  const { data: userData, error: userError } = await supabase
+    .from("users")
+    .select("org_id")
+    .ilike("email", email)
+    .maybeSingle();
 
+  if (userError || !userData?.org_id) {
+    loadError.value = userError?.message || "Your account is not linked to an organization.";
+    isLoading.value = false;
+    return;
+  }
+
+  orgId.value = userData.org_id;
+
+  const [{ data: orgData }, { data, error: applicationsError }] = await Promise.all([
+    supabase
+      .from("orgs")
+      .select("name")
+      .eq("org_id", userData.org_id)
+      .single(),
+    supabase
+      .from("applications")
+      .select("*")
+      .eq("org_id", userData.org_id)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  if (orgData) orgName.value = orgData.name;
+  if (applicationsError) {
+    loadError.value = applicationsError.message;
+  } else {
+    applications.value = (data ?? []).map((application: any) => ({
+      ...application,
+      app_id: application.application_id,
+      application_id: application.application_id,
+      status: application.status === "rejected" ? "declined" : application.status,
+    }));
+    if (applications.value[0]) selectApplication(applications.value[0]);
   }
 
   isLoading.value = false;
@@ -304,13 +249,7 @@ onMounted(() => {
         </p>
       </div>
 
-      <button
-        type="button"
-        @click="exportApplications"
-        class="inline-flex items-center gap-2 rounded-lg border border-[#d5d5d5] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#333] transition hover:bg-gray-50 shadow-xs"
-      >
-        <span>⭳</span> Export applications
-      </button>
+      
     </div>
 
     <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -412,7 +351,19 @@ onMounted(() => {
       </span>
     </div>
 
-    <div class="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-12 items-start">  
+    <div v-if="isLoading" class="mt-8 rounded-xl border border-dashed border-[#ddd] p-12 text-center text-xs text-[#888]">
+      Loading applications...
+    </div>
+
+    <div v-else-if="loadError" class="mt-8 rounded-xl border border-red-100 bg-red-50 p-4 text-xs text-red-700">
+      {{ loadError }}
+    </div>
+
+    <div v-else-if="!filteredApplications.length" class="mt-8 rounded-xl border border-dashed border-[#ddd] p-12 text-center text-xs text-[#888]">
+      No applications found.
+    </div>
+
+    <div v-else class="mt-4 grid grid-cols-1 gap-6 lg:grid-cols-12 items-start">  
       <div class="lg:col-span-7 overflow-hidden rounded-xl border border-[#e5e5e5] bg-white">
         <table class="w-full text-left text-xs">
           <thead class="bg-[#f0f0f0] text-[11px] font-semibold text-[#444]">
