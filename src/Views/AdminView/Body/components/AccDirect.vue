@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { supabase } from "@/lib/supabaseClient";
-import { Search, Inbox } from "@primeicons/vue";
+import { Search, Inbox, Trash } from "@primeicons/vue";
 
 type UserAccount = {
   user_id: number;
@@ -15,6 +15,9 @@ const accounts = ref<UserAccount[]>([]);
 const activeTab = ref<"active" | "archived">("active");
 const searchQuery = ref("");
 const isLoading = ref(true);
+const pendingDeleteAccount = ref<UserAccount | null>(null);
+const isDeletingAccount = ref(false);
+const deleteError = ref("");
 
 
 async function loadAccounts() {
@@ -80,12 +83,55 @@ async function toggleArchive(account: UserAccount) {
 
   account.is_active = newStatus;
 }
+
+function openDeleteConfirmation(account: UserAccount) {
+  deleteError.value = "";
+  pendingDeleteAccount.value = account;
+}
+
+function closeDeleteConfirmation() {
+  if (!isDeletingAccount.value) {
+    pendingDeleteAccount.value = null;
+    deleteError.value = "";
+  }
+}
+
+async function deleteAccount() {
+  const account = pendingDeleteAccount.value;
+  if (!account || account.is_active) return;
+
+  isDeletingAccount.value = true;
+  deleteError.value = "";
+
+  const { data, error } = await supabase
+    .from("users")
+    .delete()
+    .eq("user_id", account.user_id)
+    .eq("is_active", false)
+    .select("user_id");
+
+  if (error) {
+    deleteError.value = error.message || "Unable to delete this account.";
+    isDeletingAccount.value = false;
+    return;
+  }
+  if (!data || data.length === 0) {
+    deleteError.value = "The account was not deleted. Check the database delete policy.";
+    isDeletingAccount.value = false;
+    return;
+  }
+
+  accounts.value = accounts.value.filter((item) => item.user_id !== account.user_id);
+  pendingDeleteAccount.value = null;
+  isDeletingAccount.value = false;
+}
+
 onMounted(() => {
   loadAccounts();
 });
 </script>
 <template>
-  <main class="flex-1 h-full overflow-y-auto bg-white p-8">
+      <main class="flex-1 h-full overflow-y-auto bg-white p-8">
 
     <h1 class="text-3xl font-extrabold text-[#1a1a1a]">Lists of Accounts</h1>
 
@@ -174,14 +220,25 @@ onMounted(() => {
             </td>
    
             <td class="px-4 py-3.5 text-center">
-              <button
-                type="button"
-                @click="toggleArchive(account)"
-                class="inline-flex items-center gap-1.5 rounded-lg bg-[#6b0207] px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-[#520105]"
-              >
-                <span>{{ activeTab === "active" ? "Archive" : "Restore" }}</span>
-                <Inbox class="h-3 w-3 shrink-0" />
-              </button>
+              <div class="flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  @click="toggleArchive(account)"
+                  class="inline-flex items-center gap-1.5 rounded-lg bg-[#6b0207] px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-[#520105]"
+                >
+                  <span>{{ activeTab === "active" ? "Archive" : "Restore" }}</span>
+                  <Inbox class="h-3 w-3 shrink-0" />
+                </button>
+                <button
+                  v-if="activeTab === 'archived'"
+                  type="button"
+                  class="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-[11px] font-semibold text-red-700 transition hover:bg-red-50"
+                  @click="openDeleteConfirmation(account)"
+                >
+                  <span>Delete</span>
+                  <Trash class="h-3 w-3 shrink-0" />
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -193,6 +250,52 @@ onMounted(() => {
       class="mt-8 rounded-xl border border-dashed border-[#ddd] p-12 text-center text-xs text-[#888]"
     >
       No {{ activeTab }} accounts found.
+    </div>
+
+    <div
+      v-if="pendingDeleteAccount"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      role="presentation"
+      @click.self="closeDeleteConfirmation"
+    >
+      <section
+        class="w-full max-w-md rounded-xl bg-white p-6 shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-account-title"
+      >
+        <h2 id="delete-account-title" class="text-lg font-bold text-[#1a1a1a]">
+          Delete account?
+        </h2>
+        <p class="mt-2 text-sm leading-relaxed text-[#555]">
+          Are you sure you want to permanently delete
+          <span class="font-semibold text-[#222]">{{ pendingDeleteAccount.email }}</span>?
+          This action cannot be undone.
+        </p>
+
+        <p v-if="deleteError" class="mt-4 rounded-lg bg-red-50 px-3 py-2.5 text-xs text-red-700">
+          {{ deleteError }}
+        </p>
+
+        <div class="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            :disabled="isDeletingAccount"
+            class="rounded-lg px-4 py-2 text-xs font-semibold text-[#555] transition hover:bg-gray-100 disabled:opacity-50"
+            @click="closeDeleteConfirmation"
+          >
+            No
+          </button>
+          <button
+            type="button"
+            :disabled="isDeletingAccount"
+            class="rounded-lg bg-[#6b0207] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#520105] disabled:opacity-60"
+            @click="deleteAccount"
+          >
+            {{ isDeletingAccount ? "Deleting..." : "Yes, delete account" }}
+          </button>
+        </div>
+      </section>
     </div>
   </main>
 </template>

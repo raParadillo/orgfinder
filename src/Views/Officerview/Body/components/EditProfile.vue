@@ -244,20 +244,20 @@ onMounted(() => {
 
       <div class="space-y-6">
 
-        <div class="rounded-xl border border-[#e5e5e5] bg-white p-5 shadow-sm">
+        <div class="rounded-xl border border-[#e5e5e5] bg-white p-5 text-center shadow-sm">
           <h2 class="text-xs font-bold text-[#222]">Organization logo</h2>
           
-          <div class="mt-4 flex items-center gap-4">
+          <div class="mt-4 flex flex-col items-center gap-4">
 
             <img
               v-if="logoUrl"
               :src="logoUrl"
               alt="Logo preview"
-              class="h-14 w-14 rounded-lg object-cover border"
+              class="h-32 w-32 rounded-lg border object-cover"
             />
             <div
               v-else
-              class="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-[#1a1a1a] text-xs font-bold text-[#ffca28]"
+              class="flex h-32 w-32 shrink-0 items-center justify-center rounded-lg bg-[#1a1a1a] text-xs font-bold text-[#ffca28]"
             >
               {{ acronym }}
             </div>
@@ -267,32 +267,10 @@ onMounted(() => {
               <input type="file" accept="image/*" class="hidden" @change="handleLogoUpload" />
             </label>
           </div>
-          <p class="mt-3 text-[10px] text-[#999]">Square JPG or PNG · Max 2 MB</p>
+          <p class="mt-3 text-center text-[10px] text-[#999]">Square JPG or PNG · Max 2 MB</p>
         </div>
 
-        <div class="rounded-xl border border-[#e5e5e5] bg-white p-5 shadow-sm">
-          <h2 class="text-xs font-bold text-[#222]">Organization status</h2>
-          
-          <div class="mt-3 grid grid-cols-2 gap-2">
-
-            <button type="button" @click="setStatus(true)" class="flex items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-semibold transition" :class="isActive ? 'border-[#6b0207] bg-rose-50 text-[#6b0207]' : 'border-[#e0e0e0] text-[#777] hover:bg-gray-50'">
-              <Check v-if="isActive" class="h-3 w-3 text-[#6b0207]" />
-              <span v-else class="h-2 w-2 rounded-full border border-gray-400"></span>
-              <span>Active</span>
-            </button>
-
-            <button type="button" @click="setStatus(false)" class="flex items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-semibold transition" :class="!isActive ? 'border-[#6b0207] bg-rose-50 text-[#6b0207]' : 'border-[#e0e0e0] text-[#777] hover:bg-gray-50'">
-              <Check v-if="!isActive" class="h-3 w-3 text-[#6b0207]" />
-              <span v-else class="h-2 w-2 rounded-full border border-gray-400"></span>
-              <span>Archived</span>
-            </button>
-
-          </div>
-
-          <p class="mt-3 text-[10px] leading-relaxed text-[#888]">
-            Active organizations appear in the public directory. Archiving hides your page and pauses new applications.
-          </p>
-        </div>
+        
 
       </div>
 

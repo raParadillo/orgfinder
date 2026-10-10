@@ -12,7 +12,8 @@ const name = ref("");
 const category = ref("");
 const description = ref("");
 const fbUrl = ref("");
-const logoUrl = ref<string | null>(null);
+const logoFile = ref<File | null>(null);
+const logoPreview = ref<string | null>(null);
 const isActive = ref(true);
 
 const categories = [
@@ -34,21 +35,25 @@ const acronym = computed(() => {
     .toUpperCase();
 });
 
-async function handleLogoUpload(event: Event) {
+function handleLogoUpload(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0];
   if (!file) return;
 
-  const fileExt = file.name.split(".").pop();
-  const filePath = `org-${Date.now()}.${fileExt}`;
+  errorMessage.value = "";
 
-  const { error: uploadError } = await supabase.storage
-    .from("org-logos")
-    .upload(filePath, file);
-
-  if (!uploadError) {
-    const { data } = supabase.storage.from("org-logos").getPublicUrl(filePath);
-    logoUrl.value = data.publicUrl;
+  if (!file.type.startsWith("image/")) {
+    errorMessage.value = "Please choose an image file.";
+    return;
   }
+
+  if (file.size > 2 * 1024 * 1024) {
+    errorMessage.value = "The organization logo must be 2 MB or smaller.";
+    return;
+  }
+
+  if (logoPreview.value) URL.revokeObjectURL(logoPreview.value);
+  logoFile.value = file;
+  logoPreview.value = URL.createObjectURL(file);
 }
 
 // Submit Form to Supabase
@@ -61,16 +66,42 @@ async function handleCreateOrg() {
   isSubmitting.value = true;
   errorMessage.value = "";
 
+  let uploadedLogoPath = "";
+  let logoUrl: string | null = null;
+
+  if (logoFile.value) {
+    const fileExtension = logoFile.value.name.split(".").pop()?.toLowerCase() || "jpg";
+    uploadedLogoPath = `org-${Date.now()}-${crypto.randomUUID()}.${fileExtension}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("org-logos")
+      .upload(uploadedLogoPath, logoFile.value);
+
+    if (uploadError) {
+      errorMessage.value = uploadError.message || "Unable to upload the organization logo.";
+      isSubmitting.value = false;
+      return;
+    }
+
+    const { data: publicLogo } = supabase.storage
+      .from("org-logos")
+      .getPublicUrl(uploadedLogoPath);
+    logoUrl = publicLogo.publicUrl;
+  }
+
   const { error } = await supabase.from("orgs").insert({
     name: name.value.trim(),
     category: category.value || null,
     description: description.value.trim() || null,
     fb_url: fbUrl.value.trim() || null,
-    logo_url: logoUrl.value,
+    logo_url: logoUrl,
     is_active: isActive.value,
   });
 
   if (error) {
+    if (uploadedLogoPath) {
+      await supabase.storage.from("org-logos").remove([uploadedLogoPath]);
+    }
     errorMessage.value = error.message;
     isSubmitting.value = false;
   } else {
@@ -174,8 +205,8 @@ function handleCancel() {
           <div class="mt-4 flex items-center gap-4">
 
             <img
-              v-if="logoUrl"
-              :src="logoUrl"
+              v-if="logoPreview"
+              :src="logoPreview"
               alt="Org logo preview"
               class="h-14 w-14 rounded-lg object-cover border"
             />
@@ -187,7 +218,7 @@ function handleCancel() {
             </div>
 
             <label class="cursor-pointer rounded-lg border border-[#d5d5d5] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#333] transition hover:bg-gray-50">
-              <span>⭡ Change logo</span>
+              <span>⭡ Upload Photo</span>
               <input type="file" accept="image/*" class="hidden" @change="handleLogoUpload" />
             </label>
           </div>

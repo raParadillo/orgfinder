@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { supabase } from "@/lib/supabaseClient";
-import { Search, Pencil, Inbox } from "@primeicons/vue";
+import { Search, Pencil, Inbox, Times } from "@primeicons/vue";
 
 type Member = {
   member_id: number;
@@ -16,6 +16,7 @@ type Member = {
 };
 
 const orgName = ref("");
+const orgId = ref<number | null>(null);
 const members = ref<Member[]>([]);
 const activeTab = ref<"active" | "archived">("active");
 const searchQuery = ref("");
@@ -27,6 +28,16 @@ const itemsPerPage = 8;
 const showEditModal = ref(false);
 const editingMember = ref<Member | null>(null);
 const newPosition = ref("");
+const showAddStudentDrawer = ref(false);
+const isAddingStudent = ref(false);
+const addStudentError = ref("");
+const newStudent = ref({
+  studentId: "",
+  fullName: "",
+  email: "",
+  position: "Member",
+  year: new Date().getFullYear().toString(),
+});
 
 function getInitials(nameOrEmail?: string) {
   if (!nameOrEmail) return "MB";
@@ -48,6 +59,7 @@ async function loadMembers() {
       .maybeSingle();
 
     if (userData?.org_id) {
+      orgId.value = userData.org_id;
       const { data: orgData } = await supabase
         .from("orgs")
         .select("name")
@@ -69,9 +81,62 @@ async function loadMembers() {
           is_active: m.is_active ?? true,
         }));
       }
+
     }
   }
   isLoading.value = false;
+}
+
+function openAddStudentDrawer() {
+  addStudentError.value = "";
+  showAddStudentDrawer.value = true;
+}
+
+function closeAddStudentDrawer() {
+  if (isAddingStudent.value) return;
+  showAddStudentDrawer.value = false;
+}
+
+async function addStudent() {
+  if (!orgId.value) {
+    addStudentError.value = "Your organization could not be identified. Please try again.";
+    return;
+  }
+
+  if (!newStudent.value.fullName.trim() || !newStudent.value.email.trim()) {
+    addStudentError.value = "Full name and email are required.";
+    return;
+  }
+
+  isAddingStudent.value = true;
+  addStudentError.value = "";
+
+  const { error } = await supabase.from("members").insert({
+    org_id: orgId.value,
+    student_id: newStudent.value.studentId.trim() || null,
+    full_name: newStudent.value.fullName.trim(),
+    email: newStudent.value.email.trim(),
+    position: newStudent.value.position.trim() || "Member",
+    year: newStudent.value.year.trim() || new Date().getFullYear().toString(),
+    is_active: true,
+  });
+
+  if (error) {
+    addStudentError.value = error.message || "Unable to add student. Please try again.";
+    isAddingStudent.value = false;
+    return;
+  }
+
+  showAddStudentDrawer.value = false;
+  newStudent.value = {
+    studentId: "",
+    fullName: "",
+    email: "",
+    position: "Member",
+    year: new Date().getFullYear().toString(),
+  };
+  await loadMembers();
+  isAddingStudent.value = false;
 }
 
 const filteredMembers = computed(() => {
@@ -172,10 +237,10 @@ onMounted(() => {
 
       <button
         type="button"
-        @click="exportRoster"
-        class="inline-flex items-center gap-2 rounded-lg border border-[#d5d5d5] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#333] transition hover:bg-gray-50 shadow-sm"
+        @click="openAddStudentDrawer"
+        class="inline-flex items-center gap-2 rounded-lg bg-[#6b0207] px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#520105]"
       >
-        <span>⭳</span> Export roster
+        <span class="text-sm leading-none">+</span> Add student
       </button>
     </div>
 
@@ -363,5 +428,126 @@ onMounted(() => {
       </div>
     </div>
 
+    <Transition name="drawer">
+      <aside
+        v-if="showAddStudentDrawer"
+        class="fixed inset-y-0 right-0 z-50 flex w-full max-w-md flex-col bg-white shadow-2xl"
+        aria-label="Add student"
+      >
+        <div class="flex items-center justify-between border-b border-[#eee] px-6 py-5">
+          <div>
+            <h2 class="text-base font-bold text-[#222]">Add student</h2>
+            <p class="mt-1 text-xs text-[#777]">Add a student directly to your member roster.</p>
+          </div>
+          <button
+            type="button"
+            aria-label="Close add student form"
+            :disabled="isAddingStudent"
+            @click="closeAddStudentDrawer"
+            class="rounded-lg p-2 text-[#777] transition hover:bg-gray-100 hover:text-[#222] disabled:opacity-50"
+          >
+            <Times class="h-4 w-4" />
+          </button>
+        </div>
+
+        <form class="flex-1 overflow-y-auto px-6 py-6" @submit.prevent="addStudent">
+          <div class="space-y-4">
+            <label class="block text-xs font-semibold text-[#555]">
+              Student ID
+              <input
+                v-model="newStudent.studentId"
+                type="text"
+                placeholder="e.g. STU-2026-0187"
+                class="mt-1.5 w-full rounded-lg bg-[#f1f1f1] px-3.5 py-2.5 text-xs text-[#222] outline-none transition focus:bg-white focus:ring-1 focus:ring-[#6b0207]"
+              />
+            </label>
+
+            <label class="block text-xs font-semibold text-[#555]">
+              Full name <span class="text-[#6b0207]">*</span>
+              <input
+                v-model="newStudent.fullName"
+                type="text"
+                required
+                placeholder="Student full name"
+                class="mt-1.5 w-full rounded-lg bg-[#f1f1f1] px-3.5 py-2.5 text-xs text-[#222] outline-none transition focus:bg-white focus:ring-1 focus:ring-[#6b0207]"
+              />
+            </label>
+
+            <label class="block text-xs font-semibold text-[#555]">
+              Email <span class="text-[#6b0207]">*</span>
+              <input
+                v-model="newStudent.email"
+                type="email"
+                required
+                placeholder="student@example.com"
+                class="mt-1.5 w-full rounded-lg bg-[#f1f1f1] px-3.5 py-2.5 text-xs text-[#222] outline-none transition focus:bg-white focus:ring-1 focus:ring-[#6b0207]"
+              />
+            </label>
+
+            <div class="grid grid-cols-2 gap-3">
+              <label class="block text-xs font-semibold text-[#555]">
+                Position
+                <input
+                  v-model="newStudent.position"
+                  type="text"
+                  placeholder="Member"
+                  class="mt-1.5 w-full rounded-lg bg-[#f1f1f1] px-3.5 py-2.5 text-xs text-[#222] outline-none transition focus:bg-white focus:ring-1 focus:ring-[#6b0207]"
+                />
+              </label>
+
+              <label class="block text-xs font-semibold text-[#555]">
+                Year
+                <input
+                  v-model="newStudent.year"
+                  type="text"
+                  placeholder="2026"
+                  class="mt-1.5 w-full rounded-lg bg-[#f1f1f1] px-3.5 py-2.5 text-xs text-[#222] outline-none transition focus:bg-white focus:ring-1 focus:ring-[#6b0207]"
+                />
+              </label>
+            </div>
+          </div>
+
+          <p v-if="addStudentError" class="mt-4 rounded-lg bg-red-50 px-3 py-2.5 text-xs text-red-700">
+            {{ addStudentError }}
+          </p>
+
+          <div class="mt-8 flex items-center justify-end gap-3 border-t border-[#eee] pt-4">
+            <button
+              type="button"
+              :disabled="isAddingStudent"
+              @click="closeAddStudentDrawer"
+              class="rounded-lg px-4 py-2 text-xs font-semibold text-[#555] transition hover:bg-gray-100 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              :disabled="isAddingStudent"
+              class="rounded-lg bg-[#6b0207] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#520105] disabled:opacity-60"
+            >
+              {{ isAddingStudent ? "Adding..." : "Add student" }}
+            </button>
+          </div>
+        </form>
+      </aside>
+    </Transition>
+    <div
+      v-if="showAddStudentDrawer"
+      class="fixed inset-0 z-40 bg-black/30"
+      @click="closeAddStudentDrawer"
+    ></div>
+
   </main>
 </template>
+
+<style scoped>
+.drawer-enter-active,
+.drawer-leave-active {
+  transition: transform 0.25s ease;
+}
+
+.drawer-enter-from,
+.drawer-leave-to {
+  transform: translateX(100%);
+}
+</style>
