@@ -2,6 +2,7 @@
 import { computed, ref } from "vue";
 import { useRouter } from "vue-router";
 import { supabase } from "@/lib/supabaseClient";
+import { convertImageToWebp } from "@/lib/imageUpload";
 import { Check } from "@primeicons/vue";
 
 const router = useRouter();
@@ -70,12 +71,22 @@ async function handleCreateOrg() {
   let logoUrl: string | null = null;
 
   if (logoFile.value) {
-    const fileExtension = logoFile.value.name.split(".").pop()?.toLowerCase() || "jpg";
-    uploadedLogoPath = `org-${Date.now()}-${crypto.randomUUID()}.${fileExtension}`;
+    let webpLogo: File;
+    try {
+      webpLogo = await convertImageToWebp(logoFile.value);
+    } catch (conversionError) {
+      errorMessage.value = conversionError instanceof Error
+        ? conversionError.message
+        : "Unable to convert the organization logo to WebP.";
+      isSubmitting.value = false;
+      return;
+    }
+
+    uploadedLogoPath = `org-${Date.now()}-${crypto.randomUUID()}.webp`;
 
     const { error: uploadError } = await supabase.storage
       .from("org-logos")
-      .upload(uploadedLogoPath, logoFile.value);
+      .upload(uploadedLogoPath, webpLogo, { contentType: "image/webp" });
 
     if (uploadError) {
       errorMessage.value = uploadError.message || "Unable to upload the organization logo.";

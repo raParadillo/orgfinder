@@ -23,9 +23,17 @@ type OrganizationPost = {
   image_url: string | null;
 };
 
+type OrganizationMember = {
+  member_id: number;
+  full_name: string;
+  position: string | null;
+};
+
 const route = useRoute();
 const organization = ref<Organization | null>(null);
 const posts = ref<OrganizationPost[]>([]);
+const members = ref<OrganizationMember[]>([]);
+const membersOpen = ref(false);
 const isLoading = ref(true);
 const errorMessage = ref("");
 const showApplicationForm = ref(false);
@@ -65,6 +73,7 @@ async function loadOrganization() {
     { data: organizationData, error: organizationError },
     { data: postData, error: postError },
     { data: imageData },
+    { data: memberData },
   ] = await Promise.all([
     supabase
       .from("orgs")
@@ -78,6 +87,12 @@ async function loadOrganization() {
       .eq("org_id", organizationId)
       .order("created_at", { ascending: false }),
     supabase.from("post_images").select("post_id, img_url"),
+    supabase
+      .from("members")
+      .select("member_id, full_name, position")
+      .eq("org_id", organizationId)
+      .eq("is_active", true)
+      .order("full_name"),
   ]);
 
   if (organizationError || postError) {
@@ -94,6 +109,7 @@ async function loadOrganization() {
     ...post,
     image_url: imageByPost.get(post.post_id) ?? null,
   }));
+  members.value = memberData ?? [];
 }
 
 async function submitApplication() {
@@ -230,11 +246,38 @@ onMounted(async () => {
           </form>
         </section>
 
-        <section class="mx-auto max-w-3xl px-5 py-5">
-          <div class="mb-3 rounded-lg border border-[#e4e4e4] px-3 py-2 text-xs font-semibold text-[#333]">
-            Posts
-          </div>
-          <div v-if="posts.length" class="space-y-4">
+        <section class="mx-auto grid max-w-5xl gap-6 px-5 py-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+          <aside class="order-1 h-fit rounded-lg border border-[#e4e4e4] bg-white p-4 lg:order-2">
+            <button
+              type="button"
+              class="flex w-full items-center justify-between text-left"
+              @click="membersOpen = !membersOpen"
+            >
+              <h2 class="text-sm font-bold text-[#292929]">Members</h2>
+              <span class="flex items-center gap-2 text-xs font-semibold text-[#8f0c12]">
+                {{ members.length }}
+                <span class="text-base leading-none lg:hidden">{{ membersOpen ? "−" : "+" }}</span>
+              </span>
+            </button>
+            <div
+              class="mt-3 border-t border-[#eee] pt-3"
+              :class="membersOpen ? 'block' : 'hidden lg:block'"
+            >
+              <div v-if="members.length" class="space-y-3">
+                <div v-for="member in members" :key="member.member_id" class="border-b border-[#f2f2f2] pb-3 last:border-0 last:pb-0">
+                  <p class="text-xs font-semibold text-[#292929]">{{ member.full_name }}</p>
+                  <p class="mt-0.5 text-[0.65rem] text-[#777]">{{ member.position || "Member" }}</p>
+                </div>
+              </div>
+              <p v-else class="text-xs text-[#777]">No active members listed.</p>
+            </div>
+          </aside>
+
+          <div class="order-2 lg:order-1">
+            <div class="mb-3 rounded-lg border border-[#e4e4e4] px-3 py-2 text-xs font-semibold text-[#333]">
+              Posts
+            </div>
+            <div v-if="posts.length" class="space-y-4">
             <article v-for="post in posts" :key="post.post_id" class="overflow-hidden rounded-lg border border-[#e4e4e4] bg-white">
               <img
                 v-if="post.image_url"
@@ -247,11 +290,17 @@ onMounted(async () => {
                 <p class="text-[0.6rem] font-semibold uppercase text-[#8f0c12]">{{ formatDate(post.created_at) }} · {{ post.category }}</p>
                 <h2 class="mt-2 text-sm font-bold text-[#292929]">{{ post.title }}</h2>
                 <p class="mt-2 text-xs leading-relaxed text-[#666]">{{ post.content }}</p>
-                <button class="mt-3 text-[0.65rem] font-bold text-[#8f0c12]" type="button">Read full story →</button>
+                <RouterLink
+                  class="mt-3 inline-block text-[0.65rem] font-bold text-[#8f0c12] no-underline"
+                  :to="`/org/${organization.org_id}/post/${post.post_id}`"
+                >
+                  Read full story →
+                </RouterLink>
               </div>
             </article>
+            </div>
+            <p v-else class="rounded-lg border border-dashed border-[#d8d8d8] p-8 text-center text-sm text-[#777]">No posts yet.</p>
           </div>
-          <p v-else class="rounded-lg border border-dashed border-[#d8d8d8] p-8 text-center text-sm text-[#777]">No posts yet.</p>
         </section>
       </template>
     </main>
