@@ -37,3 +37,9 @@ __screenshots__/
 
 # Vite
 *.timestamp-*-*.mjs
+
+# Local environment variables
+.env
+
+# Supabase Edge Function secrets
+supabase/functions/.env

@@ -29,6 +29,24 @@ See [Vite Configuration Reference](https://vite.dev/config/).
 npm install
 ```
 
+### Enable public application submissions
+
+The application form inserts into `public.applications`. Run the migration in
+`supabase/migrations/20261011000000_allow_public_application_submissions.sql`
+against the project's Supabase database (or paste its contents into the
+Supabase SQL Editor). This allows anonymous and authenticated visitors to
+submit applications only for active organizations; application records remain
+protected from public reads.
+
+Organization logos use the `org-logos` Supabase Storage bucket. Run
+`supabase/migrations/20261011000001_create_org_logos_bucket.sql` in the same
+Supabase project before creating an organization with a logo.
+
+Permanent organization deletion is restricted to active admin accounts. Run
+`supabase/migrations/20261011000002_allow_admin_organization_deletion.sql`
+to enable the delete action in the admin organization list.
+
+
 ### Compile and Hot-Reload for Development
 
 ```sh

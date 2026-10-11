@@ -22,7 +22,11 @@ async function routeSignedInUser(email: string) {
     return;
   }
 
-  await router.replace(String(data.role).toLowerCase() === "officer" ? "/officer" : "/admin");
+  const currentPath = router.currentRoute.value.path;
+  const isOfficer = String(data.role).toLowerCase() === "officer";
+  if (currentPath === "/" || currentPath === "/login") {
+    await router.replace(isOfficer ? "/officer" : "/admin");
+  }
 }
 
 function updateScrollState() {
