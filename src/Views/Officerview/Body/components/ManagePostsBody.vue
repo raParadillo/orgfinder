@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, computed } from "vue";
 import { supabase } from "@/lib/supabaseClient";
+import { convertImageToWebp } from "@/lib/imageUpload";
 import { PlusCircle, FileEdit, Times, Trash } from "@primeicons/vue";
 
 type Post = {
@@ -9,7 +10,7 @@ type Post = {
   title: string;
   content: string;
   category?: string;
-  image_url?: string;
+  image_url?: string | null;
   created_at: string;
 };
 
@@ -26,9 +27,28 @@ const postContent = ref("");
 const postImageFile = ref<File | null>(null);
 const postImagePreview = ref("");
 const formError = ref("");
+const loadError = ref("");
+const deleteError = ref("");
+
+function getPostImagePath(imageUrl: string | null | undefined) {
+  if (!imageUrl) return null;
+
+  try {
+    const url = new URL(imageUrl);
+    const bucketMarker = "/post-images/";
+    const markerIndex = url.pathname.indexOf(bucketMarker);
+    if (markerIndex === -1) return null;
+
+    const path = decodeURIComponent(url.pathname.slice(markerIndex + bucketMarker.length));
+    return path || null;
+  } catch {
+    return null;
+  }
+}
 
 async function loadPosts() {
   isLoading.value = true;
+  loadError.value = "";
   const { data: sessionData } = await supabase.auth.getSession();
   const email = sessionData.session?.user.email;
 
@@ -51,17 +71,19 @@ async function loadPosts() {
 
       const [
         { data: postsData, error: postsError },
-        { data: imagesData }
+        { data: imagesData, error: imagesError },
       ] = await Promise.all([
         supabase
           .from("posts")
           .select("*")
           .eq("org_id", userData.org_id)
           .order("created_at", { ascending: false }),
-        supabase.from("posts_images").select("post_id, img_url"),
+        supabase.from("post_images").select("post_id, img_url"),
       ]);
 
-      if (postsData && !postsError) {
+      if (postsError || imagesError) {
+        loadError.value = (postsError || imagesError)?.message || "Unable to load posts.";
+      } else if (postsData) {
         const imageByPost = new Map((imagesData ?? []).map((img) => [img.post_id, img.img_url]));
         posts.value = postsData.map((p) => ({
           ...p,
@@ -84,13 +106,22 @@ async function createPost() {
   let imageUrl = "";
 
   if (postImageFile.value) {
-    const file = postImageFile.value;
-    const fileExtension = file.name.split(".").pop()?.toLowerCase() || "jpg";
-    uploadedImagePath = `org-${orgId.value}/${Date.now()}.${fileExtension}`;
+    let webpImage: File;
+    try {
+      webpImage = await convertImageToWebp(postImageFile.value);
+    } catch (conversionError) {
+      formError.value = conversionError instanceof Error
+        ? conversionError.message
+        : "Unable to convert the post image to WebP.";
+      isSaving.value = false;
+      return;
+    }
+
+    uploadedImagePath = `org-${orgId.value}/${Date.now()}-${crypto.randomUUID()}.webp`;
 
     const { error: uploadError } = await supabase.storage
       .from("post-images")
-      .upload(uploadedImagePath, file);
+      .upload(uploadedImagePath, webpImage, { contentType: "image/webp" });
 
     if (uploadError) {
       formError.value = uploadError.message || "Unable to upload the post image.";
@@ -119,7 +150,7 @@ async function createPost() {
 
   if (newPost && !postError) {
     if (imageUrl) {
-      const { error: imageError } = await supabase.from("posts_images").insert([
+      const { error: imageError } = await supabase.from("post_images").insert([
         {
           post_id: newPost.post_id,
           img_url: imageUrl,
@@ -127,8 +158,11 @@ async function createPost() {
       ]);
 
       if (imageError) {
-        formError.value = imageError.message || "Post was created, but the image could not be saved.";
-        newPost.image_url = imageUrl;
+        await supabase.from("posts").delete().eq("post_id", newPost.post_id);
+        await supabase.storage.from("post-images").remove([uploadedImagePath]);
+        formError.value = imageError.message || "Unable to save the post image.";
+        isSaving.value = false;
+        return;
       } else {
         newPost.image_url = imageUrl;
       }
@@ -140,7 +174,7 @@ async function createPost() {
     postContent.value = "";
     postImageFile.value = null;
     postImagePreview.value = "";
-    postCategory.value = "Announcement";
+    postCategory.value = "announcement";
   } else if (postError) {
     if (uploadedImagePath) {
       await supabase.storage.from("post-images").remove([uploadedImagePath]);
@@ -178,10 +212,72 @@ function clearPostImage() {
 async function deletePost(postId: number) {
   if (!confirm("Are you sure you want to delete this post?")) return;
 
-  const { error } = await supabase.from("posts").delete().eq("post_id", postId);
-  if (!error) {
-    posts.value = posts.value.filter((p) => p.post_id !== postId);
+  deleteError.value = "";
+  const post = posts.value.find((item) => item.post_id === postId);
+  const { data: imageRecord, error: imageLookupError } = await supabase
+    .from("post_images")
+    .select("img_url")
+    .eq("post_id", postId)
+    .maybeSingle();
+
+  if (imageLookupError) {
+    deleteError.value = `Could not find the post image: ${imageLookupError.message}`;
+    return;
   }
+
+  const imagePath = getPostImagePath(imageRecord?.img_url || post?.image_url);
+  const imageUrl = imageRecord?.img_url || post?.image_url;
+
+  if (imageUrl && !imagePath) {
+    deleteError.value = "The post image URL does not point to the post-images bucket.";
+    return;
+  }
+
+  if (imagePath) {
+    const { error: imageError } = await supabase.storage
+      .from("post-images")
+      .remove([imagePath]);
+
+    if (imageError) {
+      deleteError.value = `Could not delete the post image: ${imageError.message}`;
+      return;
+    }
+
+    const lastSlash = imagePath.lastIndexOf("/");
+    const imageFolder = lastSlash === -1 ? "" : imagePath.slice(0, lastSlash);
+    const imageName = lastSlash === -1 ? imagePath : imagePath.slice(lastSlash + 1);
+    const { data: remainingFiles, error: verifyError } = await supabase.storage
+      .from("post-images")
+      .list(imageFolder, { search: imageName, limit: 10 });
+
+    if (verifyError) {
+      deleteError.value = `Post image deletion could not be verified: ${verifyError.message}`;
+      return;
+    }
+
+    if (remainingFiles?.some((file) => file.name === imageName)) {
+      deleteError.value = "Supabase did not remove the post image. Check the scoped Storage policies.";
+      return;
+    }
+  }
+
+  const { error: imageRecordError } = await supabase
+    .from("post_images")
+    .delete()
+    .eq("post_id", postId);
+
+  if (imageRecordError) {
+    deleteError.value = `Could not delete the post image record: ${imageRecordError.message}`;
+    return;
+  }
+
+  const { error: postError } = await supabase.from("posts").delete().eq("post_id", postId);
+  if (postError) {
+    deleteError.value = postError.message || "Unable to delete the post.";
+    return;
+  }
+
+  posts.value = posts.value.filter((item) => item.post_id !== postId);
 }
 
 function formatDate(dateStr: string) {
@@ -221,6 +317,12 @@ onMounted(() => {
     <div v-if="isLoading" class="py-16 text-center text-xs text-gray-500">
       Loading posts...
     </div>
+    <div v-else-if="loadError" class="mt-6 rounded-lg bg-red-50 p-4 text-xs font-semibold text-red-700">
+      {{ loadError }}
+    </div>
+    <div v-if="deleteError" class="mt-4 rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-700">
+      {{ deleteError }}
+    </div>
     <div v-else-if="posts.length > 0" class="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       <div
         v-for="post in posts"
@@ -240,6 +342,14 @@ onMounted(() => {
         <div v-if="post.image_url" class="mt-3 h-32 w-full overflow-hidden rounded-lg bg-gray-100">
           <img :src="post.image_url" alt="Post attachment" class="h-full w-full object-cover" />
         </div>
+
+        <RouterLink
+          v-if="orgId"
+          :to="`/org/${orgId}/post/${post.post_id}`"
+          class="mt-4 inline-block text-xs font-bold text-[#6b0207] no-underline hover:underline"
+        >
+          Read full story →
+        </RouterLink>
 
         <div class="mt-4 pt-3 border-t border-[#f0f0f0] flex items-center justify-end gap-2">
           <button

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { supabase } from "@/lib/supabaseClient";
+import { convertImageToWebp } from "@/lib/imageUpload";
 import { Check } from "@primeicons/vue";
 
 const orgId = ref<number | null>(null);
@@ -14,6 +15,8 @@ const category = ref("academic");
 const description = ref("");
 const fbUrl = ref("");
 const logoUrl = ref<string | null>(null);
+const logoFile = ref<File | null>(null);
+const logoPreview = ref("");
 const isActive = ref(true);
 
 const categories = [
@@ -70,6 +73,8 @@ async function loadOrgProfile() {
       description.value = orgData.description || "";
       fbUrl.value = orgData.fb_url || "";
       logoUrl.value = orgData.logo_url || null;
+      logoFile.value = null;
+      logoPreview.value = "";
       isActive.value = orgData.is_active ?? true;
     }
   }
@@ -79,19 +84,28 @@ async function loadOrgProfile() {
 
 async function handleLogoUpload(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0];
-  if (!file || !orgId.value) return;
+  if (!file) return;
 
-  const fileExt = file.name.split(".").pop();
-  const filePath = `org-${orgId.value}-${Date.now()}.${fileExt}`;
-
-  const { error: uploadError } = await supabase.storage
-    .from("org-logos")
-    .upload(filePath, file);
-
-  if (!uploadError) {
-    const { data } = supabase.storage.from("org-logos").getPublicUrl(filePath);
-    logoUrl.value = data.publicUrl;
+  errorMessage.value = "";
+  if (!file.type.startsWith("image/")) {
+    errorMessage.value = "Please select an image file.";
+    return;
   }
+  if (file.size > 2 * 1024 * 1024) {
+    errorMessage.value = "The organization logo must be 2 MB or smaller.";
+    return;
+  }
+
+  if (logoPreview.value) URL.revokeObjectURL(logoPreview.value);
+  logoFile.value = file;
+  logoPreview.value = URL.createObjectURL(file);
+}
+
+function clearLogo() {
+  if (logoPreview.value) URL.revokeObjectURL(logoPreview.value);
+  logoFile.value = null;
+  logoPreview.value = "";
+  logoUrl.value = null;
 }
 
 async function setStatus(active: boolean) {
@@ -122,6 +136,39 @@ async function handleSaveChanges() {
   errorMessage.value = "";
   successMessage.value = "";
 
+  let uploadedLogoPath = "";
+  let savedLogoUrl = logoUrl.value;
+
+  if (logoFile.value) {
+    let webpLogo: File;
+    try {
+      webpLogo = await convertImageToWebp(logoFile.value);
+    } catch (conversionError) {
+      errorMessage.value = conversionError instanceof Error
+        ? conversionError.message
+        : "Unable to convert the organization logo to WebP.";
+      isSaving.value = false;
+      return;
+    }
+
+    uploadedLogoPath = `org-${orgId.value}-${Date.now()}-${crypto.randomUUID()}.webp`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("org-logos")
+      .upload(uploadedLogoPath, webpLogo, { contentType: "image/webp" });
+
+    if (uploadError) {
+      errorMessage.value = uploadError.message || "Unable to upload the organization logo.";
+      isSaving.value = false;
+      return;
+    }
+
+    const { data: publicLogo } = supabase.storage
+      .from("org-logos")
+      .getPublicUrl(uploadedLogoPath);
+    savedLogoUrl = publicLogo.publicUrl;
+  }
+
   const { error } = await supabase
     .from("orgs")
     .update({
@@ -129,14 +176,21 @@ async function handleSaveChanges() {
       category: category.value,
       description: description.value.trim() || null,
       fb_url: fbUrl.value.trim() || null,
-      logo_url: logoUrl.value,
+      logo_url: savedLogoUrl,
       is_active: isActive.value,
     })
     .eq("org_id", orgId.value);
 
   if (error) {
+    if (uploadedLogoPath) {
+      await supabase.storage.from("org-logos").remove([uploadedLogoPath]);
+    }
     errorMessage.value = error.message;
   } else {
+    logoUrl.value = savedLogoUrl;
+    if (logoPreview.value) URL.revokeObjectURL(logoPreview.value);
+    logoFile.value = null;
+    logoPreview.value = "";
     successMessage.value = "Organization profile updated successfully!";
   }
 
@@ -250,8 +304,8 @@ onMounted(() => {
           <div class="mt-4 flex flex-col items-center gap-4">
 
             <img
-              v-if="logoUrl"
-              :src="logoUrl"
+              v-if="logoPreview || logoUrl"
+              :src="logoPreview || logoUrl || undefined"
               alt="Logo preview"
               class="h-32 w-32 rounded-lg border object-cover"
             />
@@ -263,9 +317,17 @@ onMounted(() => {
             </div>
 
             <label class="cursor-pointer rounded-lg border border-[#d5d5d5] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#333] transition hover:bg-gray-50">
-              <span>⭡ Change logo</span>
+              <span>{{ logoFile ? "Choose another logo" : "Change logo" }}</span>
               <input type="file" accept="image/*" class="hidden" @change="handleLogoUpload" />
             </label>
+            <button
+              v-if="logoUrl || logoFile"
+              type="button"
+              class="text-[11px] font-semibold text-red-700 hover:underline"
+              @click="clearLogo"
+            >
+              Remove logo
+            </button>
           </div>
           <p class="mt-3 text-center text-[10px] text-[#999]">Square JPG or PNG · Max 2 MB</p>
         </div>

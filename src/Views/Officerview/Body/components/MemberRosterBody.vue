@@ -269,7 +269,7 @@ onMounted(() => {
         <input
           v-model="searchQuery"
           type="search"
-          placeholder="Search by email, position, or year"
+          placeholder="Search by name, email, position, or year"
           class="w-full rounded-full bg-[#f1f1f1] py-1.5 pl-9 pr-4 text-xs text-[#222] outline-none focus:ring-1 focus:ring-[#6b0207]"
         />
       </div>
@@ -289,7 +289,7 @@ onMounted(() => {
       <table class="w-full text-left text-xs text-[#333]">
         <thead class="bg-[#d9d9d9] text-[11px] font-semibold text-[#333]">
           <tr>
-            <th class="px-5 py-3">Email</th>
+            <th class="px-5 py-3">Name</th>
             <th class="px-4 py-3">Position</th>
             <th class="px-4 py-3">Status</th>
             <th class="px-4 py-3">Year</th>
@@ -307,7 +307,10 @@ onMounted(() => {
                 <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-[#ebebeb] text-[10px] font-bold text-[#555]">
                   {{ getInitials(member.full_name || member.email) }}
                 </div>
-                <span>{{ member.email }}</span>
+                <div class="min-w-0">
+                  <p class="truncate font-semibold text-[#222]">{{ member.full_name || "Unnamed member" }}</p>
+                  <p class="truncate text-[10px] font-normal text-[#777]">{{ member.email }}</p>
+                </div>
               </div>
             </td>
 

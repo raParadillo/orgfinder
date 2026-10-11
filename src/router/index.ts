@@ -11,6 +11,7 @@ import EditOrgPfp from "@/Views/Officerview/EditOrgPfp.vue";
 import MemberRoster from "@/Views/Officerview/MemberRoster.vue";
 import Applications from "@/Views/Officerview/Applications.vue";
 import ManageOrgPosts from "@/Views/Officerview/ManageOrgPosts.vue";
+import PostStory from "@/Views/UserView/OrgView/PostStory.vue";
 
 
 const router = createRouter({
@@ -30,6 +31,11 @@ const router = createRouter({
       path: "/org/:id",
       name: "organization-detail",
       component: OrgView,
+    },
+    {
+      path: "/org/:id/post/:postId",
+      name: "organization-post",
+      component: PostStory,
     },
     {
       path: "/admin",

@@ -28,6 +28,8 @@ const searchQuery = ref("");
 const isLoading = ref(true);
 const isSaving = ref(false);
 const loadError = ref("");
+const saveMessage = ref("");
+const saveError = ref("");
 
 const draftStatus = ref<"pending" | "approved" | "declined">("pending");
 const draftNotes = ref("");
@@ -167,6 +169,8 @@ async function saveStatusAndNotes() {
   if (!selectedApp.value) return;
 
   isSaving.value = true;
+  saveMessage.value = "";
+  saveError.value = "";
   const targetId = selectedApp.value.application_id || selectedApp.value.app_id;
 
   const now = new Date().toISOString();
@@ -196,6 +200,8 @@ async function saveStatusAndNotes() {
           if (!existingMember) {
         await supabase.from("members").insert({
           org_id: selectedApp.value.org_id,
+          student_id: selectedApp.value.student_id,
+          full_name: selectedApp.value.full_name,
           email: selectedApp.value.email,
           position: "Member",
           year: new Date().getFullYear().toString(),
@@ -203,6 +209,22 @@ async function saveStatusAndNotes() {
         });
       }
     }
+
+    const { error: emailError } = await supabase.functions.invoke("send-application-status-email", {
+      body: {
+        applicationId: targetId,
+        status: draftStatus.value,
+        notes: draftNotes.value.trim(),
+      },
+    });
+
+    if (emailError) {
+      saveError.value = `Status saved, but the applicant email could not be sent: ${emailError.message}`;
+    } else {
+      saveMessage.value = `Status saved and email sent to ${selectedApp.value.email}.`;
+    }
+  } else {
+    saveError.value = error?.message || "Unable to save application status and notes.";
   }
 
   isSaving.value = false;
@@ -357,6 +379,12 @@ onMounted(() => {
 
     <div v-else-if="loadError" class="mt-8 rounded-xl border border-red-100 bg-red-50 p-4 text-xs text-red-700">
       {{ loadError }}
+    </div>
+    <div v-if="saveMessage" class="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 p-4 text-xs font-semibold text-emerald-700">
+      {{ saveMessage }}
+    </div>
+    <div v-if="saveError" class="mt-4 rounded-xl border border-red-100 bg-red-50 p-4 text-xs font-semibold text-red-700">
+      {{ saveError }}
     </div>
 
     <div v-else-if="!filteredApplications.length" class="mt-8 rounded-xl border border-dashed border-[#ddd] p-12 text-center text-xs text-[#888]">
@@ -596,22 +624,6 @@ onMounted(() => {
         </div>
 
         <div class="border-t border-[#eee] pt-4 flex flex-wrap items-center justify-end gap-2">
-          <button
-            type="button"
-            @click="quickUpdate('declined')"
-            class="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50"
-          >
-            <Times class="h-3.5 w-3.5" />
-            <span>Decline</span>
-          </button>
-          <button
-            type="button"
-            @click="quickUpdate('approved')"
-            class="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50"
-          >
-            <Check class="h-3.5 w-3.5" />
-            <span>Approve</span>
-          </button>
           <button
             type="button"
             :disabled="isSaving"
